@@ -1,6 +1,9 @@
 ---
 id: INV.PLATFORM.DIRECT-IBCMD-REFUSES-A-FILE-BASE-SERVED-BY-IBSRV
 check:
+  - src/platform/ibcmd.rs::unavailable_ibsrv_inspection_never_dispatches_ibcmd
+  - src/platform/service.rs::unreadable_ibsrv_image_is_not_an_empty_process_list
+  - src/platform/service.rs::inaccessible_process_inventory_is_not_an_empty_process_list
   - tests/cli_ibcmd_server_guard.rs::a_running_ibsrv_blocks_direct_download_and_extension_inventory
   - tests/cli_ibcmd_server_guard.rs::a_running_ibsrv_for_another_base_leaves_direct_download_available
   - tests/cli_ibcmd_server_guard.rs::an_ibsrv_over_the_same_data_file_under_another_directory_blocks_download
@@ -19,8 +22,14 @@ check:
 команды и выбора исполнителя. Регрессии через явный `download`, стандартный
 `extensions list` и вложенный шаг `upload .cfe` фиксируют обход этой точки.
 
-Процесс другого пользователя, аргументы или образ которого закрыты, и недоступный перечень
-процессов проверку не останавливают (#780).
+Если список процессов недоступен или у обнаруженного кандидата `ibsrv` нельзя проверить
+образ, аргументы, корень или пространство монтирования, раннер отказывает с
+`environment_unavailable` до запуска утилиты. Для кандидата в ответе указан PID.
+Снимок охватывает процессы, видимые раннеру в его пространстве PID и перечне ОС.
 
 Снимок доступных аргументов подтверждает совпадение в момент проверки. Допуск прямого
 доступа по окну обслуживания и подтверждённой топологии выполняется отдельно.
+
+Чтобы не вернуть молчаливый допуск (#780), общий опрос в `platform::service` различает
+пустой список и непроверенный процесс или недоступный список. Тесты с поддельным
+`/proc` фиксируют эти отказы независимо от доступности платформы.

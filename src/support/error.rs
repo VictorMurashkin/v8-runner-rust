@@ -329,6 +329,7 @@ impl AppError {
                     IbcmdError::MissingServerDbmsField(_)
                     | IbcmdError::DirectoryWipingExport
                     | IbcmdError::FileServedByIbsrv { .. }
+                    | IbcmdError::FileServerUnverified { .. }
                     | IbcmdError::SnapshotBusy { .. }
                     | IbcmdError::SnapshotProbe { .. }
                     | IbcmdError::SnapshotUnsupported
@@ -515,6 +516,9 @@ impl From<IbcmdError> for AppError {
         match error {
             IbcmdError::FileServedByIbsrv { .. } | IbcmdError::SnapshotBusy { .. } => {
                 Self::InfobaseBusy(error.to_string())
+            }
+            IbcmdError::FileServerUnverified { .. } => {
+                Self::environment_at(EnvironmentLayer::Platform, error.to_string())
             }
             IbcmdError::SnapshotProbe { .. } => Self::environment(error.to_string()),
             IbcmdError::SnapshotUnsupported => {

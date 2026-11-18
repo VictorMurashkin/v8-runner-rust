@@ -82,22 +82,45 @@ pub fn file_base_keys(db_path: &Path) -> Vec<String> {
     vec![format!("--db-path={}", db_path.display())]
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(super) enum FileServerCheckError {
+    #[error("could not identify the target directory: {0}")]
+    Target(#[source] std::io::Error),
+    #[error(transparent)]
+    Process(#[from] super::service::ProcessInspectionError),
+}
+
 /// A local ibsrv which names this physical file base in its launch arguments.
-pub(super) fn file_server_pid(base: &Path, cancelled: impl Fn() -> bool) -> Option<u32> {
+pub(super) fn file_server_pid(
+    base: &Path,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<Option<u32>, FileServerCheckError> {
     use crate::platform::file_base_hold::DATABASE_FILE;
     use crate::support::path::filesystem_object_identity;
 
-    let directory = filesystem_object_identity(base).ok()?;
+    if !cfg!(any(windows, target_os = "linux")) {
+        return Ok(None);
+    }
+    let directory = match filesystem_object_identity(base) {
+        Ok(directory) => directory,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(FileServerCheckError::Target(error)),
+    };
     let data = filesystem_object_identity(&base.join(DATABASE_FILE)).ok();
-    crate::platform::service::first_process_with_arguments("ibsrv", cancelled, |arguments| {
-        explicit_file_base(arguments).is_some_and(|path| {
-            filesystem_object_identity(path).is_ok_and(|server_dir| server_dir == directory)
-                || data.as_ref().is_some_and(|data| {
-                    filesystem_object_identity(&path.join(DATABASE_FILE))
-                        .is_ok_and(|server_data| &server_data == data)
-                })
-        })
-    })
+    let found = super::service::first_process_with_arguments(
+        "ibsrv",
+        || cancellation.is_cancelled(),
+        |arguments| {
+            explicit_file_base(arguments).is_some_and(|path| {
+                filesystem_object_identity(path).is_ok_and(|server_dir| server_dir == directory)
+                    || data.as_ref().is_some_and(|data| {
+                        filesystem_object_identity(&path.join(DATABASE_FILE))
+                            .is_ok_and(|server_data| &server_data == data)
+                    })
+            })
+        },
+    )?;
+    Ok(found)
 }
 
 fn explicit_file_base<'a>(argv: &[&'a OsStr]) -> Option<&'a Path> {
